@@ -2,7 +2,6 @@ package com.dg.dexgold;
 
 import android.Manifest;
 import android.app.AlertDialog;
-import android.app.DownloadManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -15,13 +14,13 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.util.Base64;
-import android.webkit.URLUtil;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
@@ -38,11 +37,15 @@ public class MainActivity extends AppCompatActivity {
     SwipeRefreshLayout mySwipeRefreshLayout;
     private ValueCallback<Uri[]> mUploadMessage;
     private final static int FILECHOOSER_RESULTCODE = 1;
+    private String tempUrl = "";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
+        // --- IPPO APP OPEN AANADHUM PERMISSION KETKUM ---
+        checkStartupPermission();
 
         if (!CheckNetwork.isInternetAvailable(this)) {
             new AlertDialog.Builder(this)
@@ -55,8 +58,19 @@ public class MainActivity extends AppCompatActivity {
 
         mySwipeRefreshLayout = findViewById(R.id.swipeContainer);
         mySwipeRefreshLayout.setOnRefreshListener(() -> webview.reload());
-        
-        checkPermissions();
+    }
+
+    // App open aanadhum startup-la keka indha method
+    private void checkStartupPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.READ_MEDIA_IMAGES}, 101);
+            }
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 101);
+            }
+        }
     }
 
     private void initWebView() {
@@ -79,34 +93,36 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // 100% வேலை செய்யும் அட்வான்ஸ்டு டவுன்லோட் முறை
         webview.setDownloadListener((url, userAgent, contentDisposition, mimeType, contentLength) -> {
-            if (url.startsWith("data:")) {
-                // இது Base64 இமேஜ் ஆக இருந்தால்
-                downloadBase64Image(url);
-            } else {
-                // இது சாதாரண லிங்க் ஆக இருந்தால்
-                try {
-                    Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
-                    startActivity(i);
-                    Toast.makeText(MainActivity.this, "Downloading...", Toast.LENGTH_SHORT).show();
-                } catch (Exception e) {
-                    Toast.makeText(MainActivity.this, "Could not download file", Toast.LENGTH_SHORT).show();
-                }
-            }
+            tempUrl = url;
+            // Download panna ippo direct-ah proceed aagum (already open aanapo permission ketaachu)
+            processDownload();
         });
 
         webview.loadUrl(websiteURL);
     }
 
-    // Base64 இமேஜை டவுன்லோட் செய்யும் வசதி
+    private void processDownload() {
+        if (tempUrl.startsWith("data:")) {
+            downloadBase64Image(tempUrl);
+        } else {
+            try {
+                Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(tempUrl));
+                startActivity(i);
+                Toast.makeText(this, "Downloading...", Toast.LENGTH_SHORT).show();
+            } catch (Exception e) {
+                Toast.makeText(this, "Error!", Toast.LENGTH_SHORT).show();
+            }
+        }
+    }
+
     private void downloadBase64Image(String base64String) {
         try {
             String imageData = base64String.substring(base64String.indexOf(",") + 1);
             byte[] decodedBytes = Base64.decode(imageData, Base64.DEFAULT);
             Bitmap bitmap = BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.length);
 
-            String fileName = "Image_" + System.currentTimeMillis() + ".jpg";
+            String fileName = "MyExam_" + System.currentTimeMillis() + ".jpg";
             File path = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
             File file = new File(path, fileName);
 
@@ -115,21 +131,24 @@ public class MainActivity extends AppCompatActivity {
             out.flush();
             out.close();
 
-            // கேலரிக்கு அப்டேட் செய்தல்
             Intent mediaScanIntent = new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE);
             mediaScanIntent.setData(Uri.fromFile(file));
             sendBroadcast(mediaScanIntent);
 
-            Toast.makeText(this, "Image Saved to Downloads Folder!", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Image Saved to Gallery!", Toast.LENGTH_LONG).show();
         } catch (Exception e) {
             Toast.makeText(this, "Download Failed!", Toast.LENGTH_SHORT).show();
         }
     }
 
-    private void checkPermissions() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 1);
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == 101) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                Toast.makeText(this, "Permission Granted!", Toast.LENGTH_SHORT).show();
+            } else {
+                Toast.makeText(this, "Storage Permission is needed for Downloads", Toast.LENGTH_LONG).show();
             }
         }
     }
