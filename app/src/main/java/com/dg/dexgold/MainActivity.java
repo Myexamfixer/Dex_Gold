@@ -1,28 +1,18 @@
 package com.dg.dexgold;
 
-import android.Manifest;
 import android.app.AlertDialog;
-import android.app.DownloadManager;
 import android.content.Context;
 import android.content.Intent;
-import android.content.pm.PackageManager;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
-import android.os.Environment;
-import android.webkit.CookieManager;
-import android.webkit.URLUtil;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
-
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.app.ActivityCompat;
-import androidx.core.content.ContextCompat;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
 public class MainActivity extends AppCompatActivity {
@@ -40,29 +30,40 @@ public class MainActivity extends AppCompatActivity {
 
         if (!CheckNetwork.isInternetAvailable(this)) {
             new AlertDialog.Builder(this)
-                    .setTitle("No Internet Connection")
-                    .setMessage("Please check your network.")
-                    .setPositiveButton("Ok", (dialog, which) -> finish())
-                    .show();
+                    .setTitle("No Internet")
+                    .setMessage("Check your connection.")
+                    .setPositiveButton("Ok", (dialog, which) -> finish()).show();
         } else {
             initWebView();
         }
 
         mySwipeRefreshLayout = findViewById(R.id.swipeContainer);
         mySwipeRefreshLayout.setOnRefreshListener(() -> webview.reload());
-        
-        // ஆப் தொடங்கும்போதே பெர்மிஷன் கேட்கும்
-        checkAppPermissions();
     }
 
     private void initWebView() {
         webview = findViewById(R.id.webView);
         webview.getSettings().setJavaScriptEnabled(true);
         webview.getSettings().setDomStorageEnabled(true);
-        webview.getSettings().setAllowFileAccess(true);
         webview.getSettings().setDatabaseEnabled(true);
-        webview.getSettings().setAllowContentAccess(true);
-        webview.setWebViewClient(new WebViewClientDemo());
+        webview.getSettings().setAllowFileAccess(true);
+        
+        // பிளாக்கர் டவுன்லோடைச் சரிசெய்ய இது அவசியம்
+        webview.getSettings().setJavaScriptCanOpenWindowsAutomatically(true);
+        
+        webview.setWebViewClient(new WebViewClient() {
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                // டவுன்லோட் லிங்காக இருந்தால் ஆப்பை விட்டு வெளியே பிரவுசரில் திறக்கும்
+                if (url.contains(".jpg") || url.contains(".png") || url.contains(".webp") || url.contains("download")) {
+                    Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                    startActivity(intent);
+                    return true;
+                }
+                view.loadUrl(url);
+                return true;
+            }
+        });
 
         webview.setWebChromeClient(new WebChromeClient() {
             public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
@@ -76,48 +77,19 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // 100% வேலை செய்யக்கூடிய டவுன்லோட் லாஜிக்
+        // 100% க்ராஷ் ஆகாது - லிங்க்-ஐ பிரவுசருக்குத் தள்ளிவிடும்
         webview.setDownloadListener((url, userAgent, contentDisposition, mimeType, contentLength) -> {
+            Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             try {
-                DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
-                String cookies = CookieManager.getInstance().getCookie(url);
-                
-                request.setMimeType(mimeType);
-                request.addRequestHeader("cookie", cookies);
-                request.addRequestHeader("User-Agent", userAgent);
-                request.setDescription("Downloading file...");
-                request.setTitle(URLUtil.guessFileName(url, contentDisposition, mimeType));
-                
-                // டவுன்லோட் முடிந்ததும் நோட்டிபிகேஷன் வரும்
-                request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
-                
-                // கேலரியில் படம் தெரிய இது அவசியம்
-                request.allowScanningByMediaScanner();
-                
-                // போனின் Downloads ஃபோல்டரில் சேமிக்கும்
-                request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, URLUtil.guessFileName(url, contentDisposition, mimeType));
-
-                DownloadManager dm = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
-                if (dm != null) {
-                    dm.enqueue(request);
-                    Toast.makeText(MainActivity.this, "Download Started... Check Gallery!", Toast.LENGTH_SHORT).show();
-                }
-            } catch (Exception e) {
-                // ஏதேனும் சிக்கல் என்றால் மட்டும் பிரவுசரில் திறக்கும்
-                Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
                 startActivity(i);
+                Toast.makeText(MainActivity.this, "Downloading in Browser...", Toast.LENGTH_SHORT).show();
+            } catch (Exception e) {
+                Toast.makeText(MainActivity.this, "Could not open download link", Toast.LENGTH_SHORT).show();
             }
         });
 
         webview.loadUrl(websiteURL);
-    }
-
-    private void checkAppPermissions() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 1);
-            }
-        }
     }
 
     @Override
@@ -127,19 +99,6 @@ public class MainActivity extends AppCompatActivity {
             Uri[] results = (resultCode == RESULT_OK && intent != null) ? new Uri[]{intent.getData()} : null;
             mUploadMessage.onReceiveValue(results);
             mUploadMessage = null;
-        }
-    }
-
-    private class WebViewClientDemo extends WebViewClient {
-        @Override
-        public boolean shouldOverrideUrlLoading(WebView view, String url) {
-            view.loadUrl(url);
-            return true;
-        }
-        @Override
-        public void onPageFinished(WebView view, String url) {
-            super.onPageFinished(view, url);
-            mySwipeRefreshLayout.setRefreshing(false);
         }
     }
 
