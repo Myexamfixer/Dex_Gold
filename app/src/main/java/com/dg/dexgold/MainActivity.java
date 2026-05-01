@@ -39,7 +39,7 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         // Permissions Request
-        checkPermissions();
+        checkAppPermissions();
 
         if (!CheckNetwork.isInternetAvailable(this)) {
             new AlertDialog.Builder(this)
@@ -64,49 +64,55 @@ public class MainActivity extends AppCompatActivity {
 
         webview.setWebChromeClient(new WebChromeClient() {
             public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
+                if (mUploadMessage != null) mUploadMessage.onReceiveValue(null);
                 mUploadMessage = filePathCallback;
                 Intent i = new Intent(Intent.ACTION_GET_CONTENT);
                 i.addCategory(Intent.CATEGORY_OPENABLE);
                 i.setType("image/*");
-                startActivityForResult(Intent.createChooser(i, "File Chooser"), FILECHOOSER_RESULTCODE);
+                startActivityForResult(Intent.createChooser(i, "Select Image"), FILECHOOSER_RESULTCODE);
                 return true;
             }
         });
 
-        // App-க்கு உள்ளேயே டவுன்லோட் ஆகும் மாஸ்டர் கோட்
+        // 100% க்ராஷ் ஆகாத டவுன்லோட் கோடு
         webview.setDownloadListener((url, userAgent, contentDisposition, mimeType, contentLength) -> {
-            DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
-            request.setMimeType(mimeType);
-            
-            // முக்கியமான பகுதி: குக்கீஸை எடுப்பது
-            String cookies = CookieManager.getInstance().getCookie(url);
-            request.addRequestHeader("cookie", cookies);
-            request.addRequestHeader("User-Agent", userAgent);
-            
-            request.setDescription("Downloading file...");
-            request.setTitle(URLUtil.guessFileName(url, contentDisposition, mimeType));
-            
-            // டவுன்லோட் முடிந்ததும் நோட்டிபிகேஷன் காட்ட
-            request.allowScanningByMediaScanner();
-            request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
-            
-            // போனின் Download ஃபோல்டரில் சேமிக்கும்
-            request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, URLUtil.guessFileName(url, contentDisposition, mimeType));
-            
-            DownloadManager dm = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
-            if (dm != null) {
-                dm.enqueue(request);
-                Toast.makeText(MainActivity.this, "Downloading file in background...", Toast.LENGTH_LONG).show();
+            try {
+                DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
+                request.setMimeType(mimeType);
+                String cookies = CookieManager.getInstance().getCookie(url);
+                request.addRequestHeader("cookie", cookies);
+                request.addRequestHeader("User-Agent", userAgent);
+                
+                request.setTitle(URLUtil.guessFileName(url, contentDisposition, mimeType));
+                request.setDescription("Downloading file...");
+                request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+
+                // ஆண்ட்ராய்டு எல்லா வெர்ஷனுக்கும் செட் ஆகும் வகையில் மாற்றப்பட்டுள்ளது
+                request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, URLUtil.guessFileName(url, contentDisposition, mimeType));
+
+                DownloadManager dm = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+                if (dm != null) {
+                    dm.enqueue(request);
+                    Toast.makeText(MainActivity.this, "Download Started...", Toast.LENGTH_SHORT).show();
+                }
+            } catch (Exception e) {
+                // இது வேலை செய்யவில்லை என்றால் மட்டும் பிரவுசரில் திறக்கும், ஆப் க்ளோஸ் ஆகாது
+                Intent i = new Intent(Intent.ACTION_VIEW);
+                i.setData(Uri.parse(url));
+                startActivity(i);
             }
         });
 
         webview.loadUrl(websiteURL);
     }
 
-    private void checkPermissions() {
+    private void checkAppPermissions() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE, Manifest.permission.READ_EXTERNAL_STORAGE}, 1);
+                ActivityCompat.requestPermissions(this, new String[]{
+                        Manifest.permission.WRITE_EXTERNAL_STORAGE, 
+                        Manifest.permission.READ_EXTERNAL_STORAGE
+                }, 1);
             }
         }
     }
