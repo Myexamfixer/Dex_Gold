@@ -1,19 +1,12 @@
 package com.dg.dexgold;
 
-import android.Manifest;
 import android.app.AlertDialog;
-import android.app.DownloadManager;
 import android.content.Context;
 import android.content.Intent;
-import android.content.pm.PackageManager;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
-import android.os.Environment;
-import android.webkit.CookieManager;
-import android.webkit.URLUtil;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebView;
@@ -21,8 +14,6 @@ import android.webkit.WebViewClient;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.app.ActivityCompat;
-import androidx.core.content.ContextCompat;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
 public class MainActivity extends AppCompatActivity {
@@ -49,19 +40,19 @@ public class MainActivity extends AppCompatActivity {
 
         mySwipeRefreshLayout = findViewById(R.id.swipeContainer);
         mySwipeRefreshLayout.setOnRefreshListener(() -> webview.reload());
-        
-        checkPermissions();
     }
 
     private void initWebView() {
         webview = findViewById(R.id.webView);
         webview.getSettings().setJavaScriptEnabled(true);
         webview.getSettings().setDomStorageEnabled(true);
-        webview.getSettings().setAllowFileAccess(true);
+        webview.getSettings().setDatabaseEnabled(true);
         webview.setWebViewClient(new WebViewClientDemo());
 
+        // இமேஜ் அப்லோட் வசதி
         webview.setWebChromeClient(new WebChromeClient() {
             public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
+                if (mUploadMessage != null) mUploadMessage.onReceiveValue(null);
                 mUploadMessage = filePathCallback;
                 Intent i = new Intent(Intent.ACTION_GET_CONTENT);
                 i.addCategory(Intent.CATEGORY_OPENABLE);
@@ -71,44 +62,19 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // வீடியோவில் காட்டியது போலவே கேலரிக்கு அனுப்பும் டவுன்லோட் கோடு
+        // மிக முக்கியமான பகுதி: க்ராஷ் ஆகாத டவுன்லோட் முறை
         webview.setDownloadListener((url, userAgent, contentDisposition, mimeType, contentLength) -> {
             try {
-                DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
-                String cookies = CookieManager.getInstance().getCookie(url);
-                request.addRequestHeader("cookie", cookies);
-                request.addRequestHeader("User-Agent", userAgent);
-                
-                String fileName = URLUtil.guessFileName(url, contentDisposition, mimeType);
-                request.setTitle(fileName);
-                
-                // டவுன்லோட் முடிந்ததும் நோட்டிபிகேஷன் காட்டும்
-                request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
-                
-                // கேலரியில் இமேஜைக் காட்ட இது அவசியம்
-                request.allowScanningByMediaScanner();
-                
-                request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName);
-
-                DownloadManager dm = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
-                dm.enqueue(request);
-                
-                Toast.makeText(MainActivity.this, "Downloading... Check your Gallery!", Toast.LENGTH_LONG).show();
+                // ஆப்பை விட்டு வெளியேறாமல் பிரவுசரில் டவுன்லோட் செய்ய வைக்கும்
+                Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                startActivity(i);
+                Toast.makeText(MainActivity.this, "Downloading in Browser...", Toast.LENGTH_SHORT).show();
             } catch (Exception e) {
-                // எரர் வந்தால் பிரவுசரில் திறக்கும்
-                startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+                Toast.makeText(MainActivity.this, "Error: Cannot open download link", Toast.LENGTH_SHORT).show();
             }
         });
 
         webview.loadUrl(websiteURL);
-    }
-
-    private void checkPermissions() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 1);
-            }
-        }
     }
 
     @Override
