@@ -1,28 +1,18 @@
 package com.dg.dexgold;
 
-import android.Manifest;
-import android.app.DownloadManager;
+import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
-import android.content.pm.PackageManager;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
-import android.os.Environment;
-import android.webkit.CookieManager;
-import android.webkit.URLUtil;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
-
-import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.app.ActivityCompat;
-import androidx.core.content.ContextCompat;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
 public class MainActivity extends AppCompatActivity {
@@ -38,83 +28,49 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        // Permissions Request
-        checkAppPermissions();
-
         if (!CheckNetwork.isInternetAvailable(this)) {
             new AlertDialog.Builder(this)
                     .setTitle("No Internet")
                     .setMessage("Please check your connection.")
                     .setPositiveButton("Ok", (dialog, which) -> finish()).show();
         } else {
-            initWebView();
+            webview = findViewById(R.id.webView);
+            webview.getSettings().setJavaScriptEnabled(true);
+            webview.getSettings().setDomStorageEnabled(true);
+            webview.getSettings().setAllowFileAccess(true);
+            webview.getSettings().setDatabaseEnabled(true);
+            webview.setWebViewClient(new WebViewClientDemo());
+
+            // Photo Upload logic
+            webview.setWebChromeClient(new WebChromeClient() {
+                public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
+                    if (mUploadMessage != null) mUploadMessage.onReceiveValue(null);
+                    mUploadMessage = filePathCallback;
+                    Intent i = new Intent(Intent.ACTION_GET_CONTENT);
+                    i.addCategory(Intent.CATEGORY_OPENABLE);
+                    i.setType("image/*");
+                    startActivityForResult(Intent.createChooser(i, "Select Image"), FILECHOOSER_RESULTCODE);
+                    return true;
+                }
+            });
+
+            // 100% No Crash Download Logic (Direct Browser Fallback)
+            webview.setDownloadListener((url, userAgent, contentDisposition, mimeType, contentLength) -> {
+                try {
+                    Intent i = new Intent(Intent.ACTION_VIEW);
+                    i.setData(Uri.parse(url));
+                    startActivity(i);
+                    Toast.makeText(MainActivity.this, "Downloading in Browser...", Toast.LENGTH_SHORT).show();
+                } catch (Exception e) {
+                    Toast.makeText(MainActivity.this, "Cannot download this file", Toast.LENGTH_SHORT).show();
+                }
+            });
+
+            webview.loadUrl(websiteURL);
         }
 
         mySwipeRefreshLayout = findViewById(R.id.swipeContainer);
         mySwipeRefreshLayout.setOnRefreshListener(() -> webview.reload());
-    }
-
-    private void initWebView() {
-        webview = findViewById(R.id.webView);
-        webview.getSettings().setJavaScriptEnabled(true);
-        webview.getSettings().setDomStorageEnabled(true);
-        webview.getSettings().setAllowFileAccess(true);
-        webview.getSettings().setDatabaseEnabled(true);
-        webview.setWebViewClient(new WebViewClientDemo());
-
-        webview.setWebChromeClient(new WebChromeClient() {
-            public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
-                if (mUploadMessage != null) mUploadMessage.onReceiveValue(null);
-                mUploadMessage = filePathCallback;
-                Intent i = new Intent(Intent.ACTION_GET_CONTENT);
-                i.addCategory(Intent.CATEGORY_OPENABLE);
-                i.setType("image/*");
-                startActivityForResult(Intent.createChooser(i, "Select Image"), FILECHOOSER_RESULTCODE);
-                return true;
-            }
-        });
-
-        // 100% க்ராஷ் ஆகாத டவுன்லோட் கோடு
-        webview.setDownloadListener((url, userAgent, contentDisposition, mimeType, contentLength) -> {
-            try {
-                DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
-                request.setMimeType(mimeType);
-                String cookies = CookieManager.getInstance().getCookie(url);
-                request.addRequestHeader("cookie", cookies);
-                request.addRequestHeader("User-Agent", userAgent);
-                
-                request.setTitle(URLUtil.guessFileName(url, contentDisposition, mimeType));
-                request.setDescription("Downloading file...");
-                request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
-
-                // ஆண்ட்ராய்டு எல்லா வெர்ஷனுக்கும் செட் ஆகும் வகையில் மாற்றப்பட்டுள்ளது
-                request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, URLUtil.guessFileName(url, contentDisposition, mimeType));
-
-                DownloadManager dm = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
-                if (dm != null) {
-                    dm.enqueue(request);
-                    Toast.makeText(MainActivity.this, "Download Started...", Toast.LENGTH_SHORT).show();
-                }
-            } catch (Exception e) {
-                // இது வேலை செய்யவில்லை என்றால் மட்டும் பிரவுசரில் திறக்கும், ஆப் க்ளோஸ் ஆகாது
-                Intent i = new Intent(Intent.ACTION_VIEW);
-                i.setData(Uri.parse(url));
-                startActivity(i);
-            }
-        });
-
-        webview.loadUrl(websiteURL);
-    }
-
-    private void checkAppPermissions() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this, new String[]{
-                        Manifest.permission.WRITE_EXTERNAL_STORAGE, 
-                        Manifest.permission.READ_EXTERNAL_STORAGE
-                }, 1);
-            }
-        }
     }
 
     @Override
