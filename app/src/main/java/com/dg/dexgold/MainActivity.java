@@ -2,6 +2,7 @@ package com.dg.dexgold;
 
 import android.Manifest;
 import android.app.AlertDialog;
+import android.app.ProgressDialog; // Loading க்காக
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -13,6 +14,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.Handler; // தாமதப்படுத்த (Delay)
 import android.util.Base64;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
@@ -44,7 +46,6 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        // --- IPPO APP OPEN AANADHUM PERMISSION KETKUM ---
         checkStartupPermission();
 
         if (!CheckNetwork.isInternetAvailable(this)) {
@@ -60,7 +61,6 @@ public class MainActivity extends AppCompatActivity {
         mySwipeRefreshLayout.setOnRefreshListener(() -> webview.reload());
     }
 
-    // App open aanadhum startup-la keka indha method
     private void checkStartupPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES) != PackageManager.PERMISSION_GRANTED) {
@@ -95,7 +95,6 @@ public class MainActivity extends AppCompatActivity {
 
         webview.setDownloadListener((url, userAgent, contentDisposition, mimeType, contentLength) -> {
             tempUrl = url;
-            // Download panna ippo direct-ah proceed aagum (already open aanapo permission ketaachu)
             processDownload();
         });
 
@@ -104,12 +103,12 @@ public class MainActivity extends AppCompatActivity {
 
     private void processDownload() {
         if (tempUrl.startsWith("data:")) {
+            // Loading திரையைக் காட்டி இமேஜைச் சேமிக்கும்
             downloadBase64Image(tempUrl);
         } else {
             try {
                 Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(tempUrl));
                 startActivity(i);
-                Toast.makeText(this, "Downloading...", Toast.LENGTH_SHORT).show();
             } catch (Exception e) {
                 Toast.makeText(this, "Error!", Toast.LENGTH_SHORT).show();
             }
@@ -117,28 +116,42 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void downloadBase64Image(String base64String) {
-        try {
-            String imageData = base64String.substring(base64String.indexOf(",") + 1);
-            byte[] decodedBytes = Base64.decode(imageData, Base64.DEFAULT);
-            Bitmap bitmap = BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.length);
+        // 2. Loading டயலாக் உருவாக்குதல்
+        final ProgressDialog pd = new ProgressDialog(MainActivity.this);
+        pd.setMessage("Optimizing & Saving Image...");
+        pd.setCancelable(false);
+        pd.show();
 
-            String fileName = "MyExam_" + System.currentTimeMillis() + ".jpg";
-            File path = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
-            File file = new File(path, fileName);
+        // ஒரு சிறிய Delay (3 வினாடிகள்) - விளம்பரம் காட்ட அல்லது லோடிங் தெரிய
+        new Handler().postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    String imageData = base64String.substring(base64String.indexOf(",") + 1);
+                    byte[] decodedBytes = Base64.decode(imageData, Base64.DEFAULT);
+                    Bitmap bitmap = BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.length);
 
-            OutputStream out = new FileOutputStream(file);
-            bitmap.compress(Bitmap.CompressFormat.JPEG, 100, out);
-            out.flush();
-            out.close();
+                    String fileName = "MyExam_" + System.currentTimeMillis() + ".jpg";
+                    File path = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+                    File file = new File(path, fileName);
 
-            Intent mediaScanIntent = new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE);
-            mediaScanIntent.setData(Uri.fromFile(file));
-            sendBroadcast(mediaScanIntent);
+                    OutputStream out = new FileOutputStream(file);
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 100, out);
+                    out.flush();
+                    out.close();
 
-            Toast.makeText(this, "Image Saved to Gallery!", Toast.LENGTH_LONG).show();
-        } catch (Exception e) {
-            Toast.makeText(this, "Download Failed!", Toast.LENGTH_SHORT).show();
-        }
+                    Intent mediaScanIntent = new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE);
+                    mediaScanIntent.setData(Uri.fromFile(file));
+                    sendBroadcast(mediaScanIntent);
+
+                    pd.dismiss(); // லோடிங் முடிந்தது
+                    Toast.makeText(MainActivity.this, "Image Saved to Gallery!", Toast.LENGTH_LONG).show();
+                } catch (Exception e) {
+                    pd.dismiss();
+                    Toast.makeText(MainActivity.this, "Download Failed!", Toast.LENGTH_SHORT).show();
+                }
+            }
+        }, 3000); // 3000ms = 3 வினாடிகள் லோடிங் ஆகும்
     }
 
     @Override
@@ -147,8 +160,6 @@ public class MainActivity extends AppCompatActivity {
         if (requestCode == 101) {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 Toast.makeText(this, "Permission Granted!", Toast.LENGTH_SHORT).show();
-            } else {
-                Toast.makeText(this, "Storage Permission is needed for Downloads", Toast.LENGTH_LONG).show();
             }
         }
     }
