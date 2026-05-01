@@ -15,6 +15,8 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
 import android.util.Base64;
+import android.view.Menu; // Menu க்காக
+import android.view.MenuItem; // Menu க்காக
 import android.webkit.JsResult;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
@@ -63,6 +65,36 @@ public class MainActivity extends AppCompatActivity {
         mySwipeRefreshLayout.setOnRefreshListener(() -> webview.reload());
     }
 
+    // --- 3 DOT MENU உருவாக்குதல் ---
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        getMenuInflater().inflate(R.menu.menu_main, menu);
+        return true;
+    }
+
+    // --- MENU கிளிக் செய்தல் ---
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        int id = item.getItemId();
+
+        if (id == R.id.action_share) {
+            Intent sendIntent = new Intent();
+            sendIntent.setAction(Intent.ACTION_SEND);
+            sendIntent.putExtra(Intent.EXTRA_TEXT, "Check out MyExamFixer Pro for Exam Image Optimization: " + websiteURL);
+            sendIntent.setType("text/plain");
+            startActivity(Intent.createChooser(sendIntent, "Share via"));
+            return true;
+        } else if (id == R.id.action_contact) {
+            webview.loadUrl("https://myexamfixer.blogspot.com/p/contact-us.html");
+            return true;
+        } else if (id == R.id.action_privacy) {
+            webview.loadUrl("https://myexamfixer.blogspot.com/p/privacy-policy.html");
+            return true;
+        }
+
+        return super.onOptionsItemSelected(item);
+    }
+
     private void checkStartupPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES) != PackageManager.PERMISSION_GRANTED) {
@@ -72,6 +104,14 @@ public class MainActivity extends AppCompatActivity {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
                 ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 101);
             }
+        }
+    }
+
+    private boolean isStoragePermissionGranted() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            return ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED;
+        } else {
+            return ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
         }
     }
 
@@ -91,10 +131,10 @@ public class MainActivity extends AppCompatActivity {
         webview.setWebChromeClient(new WebChromeClient() {
             @Override
             public boolean onJsAlert(WebView view, String url, String message, final JsResult result) {
-                new AlertDialog.Builder(MainActivity.this)
-                        .setTitle("") 
+                new AlertDialog.Builder(MainActivity.this, android.R.style.Theme_DeviceDefault_Light_Dialog_Alert)
+                        .setTitle("Notice") 
                         .setMessage(message)
-                        .setPositiveButton(android.R.string.ok, (dialog, which) -> result.confirm())
+                        .setPositiveButton("OK", (dialog, which) -> result.confirm())
                         .setCancelable(false)
                         .create()
                         .show();
@@ -102,12 +142,16 @@ public class MainActivity extends AppCompatActivity {
             }
 
             public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
+                if (!isStoragePermissionGranted()) {
+                    Toast.makeText(MainActivity.this, "Storage permission is denied. Please allow in settings.", Toast.LENGTH_LONG).show();
+                    if (mUploadMessage != null) mUploadMessage.onReceiveValue(null);
+                    checkStartupPermission();
+                    return false;
+                }
                 if (mUploadMessage != null) mUploadMessage.onReceiveValue(null);
                 mUploadMessage = filePathCallback;
-                Intent i = new Intent(Intent.ACTION_GET_CONTENT);
-                i.addCategory(Intent.CATEGORY_OPENABLE);
-                i.setType("image/*");
-                startActivityForResult(Intent.createChooser(i, "Select Image"), FILECHOOSER_RESULTCODE);
+                Intent i = new Intent(Intent.createChooser(new Intent(Intent.ACTION_GET_CONTENT).setType("image/*"), "Select Image"), "");
+                startActivityForResult(i, FILECHOOSER_RESULTCODE);
                 return true;
             }
         });
@@ -178,8 +222,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onActivityResult(int requestCode, int resultCode, Intent intent) {
         super.onActivityResult(requestCode, resultCode, intent);
         if (requestCode == FILECHOOSER_RESULTCODE && mUploadMessage != null) {
-            Uri[] results = (resultCode == RESULT_OK && intent != null) ? new Uri[]{intent.getData()} : null;
-            mUploadMessage.onReceiveValue(results);
+            mUploadMessage.onReceiveValue((resultCode == RESULT_OK && intent != null) ? new Uri[]{intent.getData()} : null);
             mUploadMessage = null;
         }
     }
