@@ -25,12 +25,9 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
-import java.util.ArrayList;
-import java.util.List;
-
 public class MainActivity extends AppCompatActivity {
 
-    String websiteURL = "https://myexamfixer.blogspot.com/";
+    String websiteURL = "https://myexamfixer.blogspot.com/"; 
     private WebView webview;
     SwipeRefreshLayout mySwipeRefreshLayout;
     private ValueCallback<Uri[]> mUploadMessage;
@@ -41,8 +38,6 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        checkAndRequestPermissions();
-
         if (!CheckNetwork.isInternetAvailable(this)) {
             new AlertDialog.Builder(this)
                     .setTitle("No Internet Connection")
@@ -50,67 +45,78 @@ public class MainActivity extends AppCompatActivity {
                     .setPositiveButton("Ok", (dialog, which) -> finish())
                     .show();
         } else {
-            webview = findViewById(R.id.webView);
-            webview.getSettings().setJavaScriptEnabled(true);
-            webview.getSettings().setDomStorageEnabled(true);
-            webview.getSettings().setAllowFileAccess(true);
-            webview.setWebViewClient(new WebViewClientDemo());
-
-            webview.setWebChromeClient(new WebChromeClient() {
-                public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, WebChromeClient.FileChooserParams fileChooserParams) {
-                    if (mUploadMessage != null) mUploadMessage.onReceiveValue(null);
-                    mUploadMessage = filePathCallback;
-                    Intent i = new Intent(Intent.ACTION_GET_CONTENT);
-                    i.addCategory(Intent.CATEGORY_OPENABLE);
-                    i.setType("image/*");
-                    startActivityForResult(Intent.createChooser(i, "Select Image"), FILECHOOSER_RESULTCODE);
-                    return true;
-                }
-            });
-
-            webview.setDownloadListener((url, userAgent, contentDisposition, mimeType, contentLength) -> {
-                try {
-                    DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
-                    request.setMimeType(mimeType);
-                    String cookies = CookieManager.getInstance().getCookie(url);
-                    request.addRequestHeader("cookie", cookies);
-                    request.addRequestHeader("User-Agent", userAgent);
-                    request.setDescription("Downloading file...");
-                    request.setTitle(URLUtil.guessFileName(url, contentDisposition, mimeType));
-                    
-                    // கேலரியில் காட்ட இது அவசியம்
-                    request.allowScanningByMediaScanner();
-                    request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
-                    request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, URLUtil.guessFileName(url, contentDisposition, mimeType));
-
-                    DownloadManager dm = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
-                    if (dm != null) {
-                        dm.enqueue(request);
-                        Toast.makeText(getApplicationContext(), "Download Started...", Toast.LENGTH_SHORT).show();
-                    }
-                } catch (Exception e) {
-                    startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
-                }
-            });
-
-            webview.loadUrl(websiteURL);
+            initWebView();
         }
 
         mySwipeRefreshLayout = findViewById(R.id.swipeContainer);
         mySwipeRefreshLayout.setOnRefreshListener(() -> webview.reload());
+        
+        // ஆப் தொடங்கும்போதே பெர்மிஷன் கேட்கும்
+        checkAppPermissions();
     }
 
-    private void checkAndRequestPermissions() {
-        List<String> listPermissionsNeeded = new ArrayList<>();
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            listPermissionsNeeded.add(Manifest.permission.READ_MEDIA_IMAGES);
-            listPermissionsNeeded.add(Manifest.permission.POST_NOTIFICATIONS);
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            listPermissionsNeeded.add(Manifest.permission.WRITE_EXTERNAL_STORAGE);
-        }
+    private void initWebView() {
+        webview = findViewById(R.id.webView);
+        webview.getSettings().setJavaScriptEnabled(true);
+        webview.getSettings().setDomStorageEnabled(true);
+        webview.getSettings().setAllowFileAccess(true);
+        webview.getSettings().setDatabaseEnabled(true);
+        webview.getSettings().setAllowContentAccess(true);
+        webview.setWebViewClient(new WebViewClientDemo());
 
-        if (!listPermissionsNeeded.isEmpty()) {
-            ActivityCompat.requestPermissions(this, listPermissionsNeeded.toArray(new String[0]), 1);
+        webview.setWebChromeClient(new WebChromeClient() {
+            public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
+                if (mUploadMessage != null) mUploadMessage.onReceiveValue(null);
+                mUploadMessage = filePathCallback;
+                Intent i = new Intent(Intent.ACTION_GET_CONTENT);
+                i.addCategory(Intent.CATEGORY_OPENABLE);
+                i.setType("image/*");
+                startActivityForResult(Intent.createChooser(i, "Select Image"), FILECHOOSER_RESULTCODE);
+                return true;
+            }
+        });
+
+        // 100% வேலை செய்யக்கூடிய டவுன்லோட் லாஜிக்
+        webview.setDownloadListener((url, userAgent, contentDisposition, mimeType, contentLength) -> {
+            try {
+                DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
+                String cookies = CookieManager.getInstance().getCookie(url);
+                
+                request.setMimeType(mimeType);
+                request.addRequestHeader("cookie", cookies);
+                request.addRequestHeader("User-Agent", userAgent);
+                request.setDescription("Downloading file...");
+                request.setTitle(URLUtil.guessFileName(url, contentDisposition, mimeType));
+                
+                // டவுன்லோட் முடிந்ததும் நோட்டிபிகேஷன் வரும்
+                request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                
+                // கேலரியில் படம் தெரிய இது அவசியம்
+                request.allowScanningByMediaScanner();
+                
+                // போனின் Downloads ஃபோல்டரில் சேமிக்கும்
+                request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, URLUtil.guessFileName(url, contentDisposition, mimeType));
+
+                DownloadManager dm = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+                if (dm != null) {
+                    dm.enqueue(request);
+                    Toast.makeText(MainActivity.this, "Download Started... Check Gallery!", Toast.LENGTH_SHORT).show();
+                }
+            } catch (Exception e) {
+                // ஏதேனும் சிக்கல் என்றால் மட்டும் பிரவுசரில் திறக்கும்
+                Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                startActivity(i);
+            }
+        });
+
+        webview.loadUrl(websiteURL);
+    }
+
+    private void checkAppPermissions() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 1);
+            }
         }
     }
 
