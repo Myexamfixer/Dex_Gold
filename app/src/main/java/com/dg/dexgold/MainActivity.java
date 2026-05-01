@@ -1,13 +1,12 @@
 package com.dg.dexgold;
 
 import android.Manifest;
-import android.app.AlertDialog;
 import android.app.DownloadManager;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
-import android.net.ConnectivityManager;
-import android.net.NetworkInfo;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -23,125 +22,81 @@ import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import androidx.core.content.FileProvider;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
+
+import java.io.File;
 
 public class MainActivity extends AppCompatActivity {
 
-    String websiteURL = "https://myexamfixer.blogspot.com/"; 
+    String websiteURL = "https://myexamfixer.blogspot.com/";
     private WebView webview;
     SwipeRefreshLayout mySwipeRefreshLayout;
     private ValueCallback<Uri[]> mUploadMessage;
     private final static int FILECHOOSER_RESULTCODE = 1;
+    long downloadID;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        if (!CheckNetwork.isInternetAvailable(this)) {
-            new AlertDialog.Builder(this)
-                    .setTitle("No Internet")
-                    .setMessage("Please check your connection.")
-                    .setPositiveButton("Ok", (dialog, which) -> finish()).show();
-        } else {
-            initWebView();
-        }
-
-        mySwipeRefreshLayout = findViewById(R.id.swipeContainer);
-        mySwipeRefreshLayout.setOnRefreshListener(() -> webview.reload());
-        
-        checkPermissions();
-    }
-
-    private void initWebView() {
         webview = findViewById(R.id.webView);
         webview.getSettings().setJavaScriptEnabled(true);
         webview.getSettings().setDomStorageEnabled(true);
-        webview.getSettings().setAllowFileAccess(true);
-        webview.getSettings().setDatabaseEnabled(true);
-        webview.setWebViewClient(new WebViewClientDemo());
-
-        webview.setWebChromeClient(new WebChromeClient() {
-            public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
-                if (mUploadMessage != null) mUploadMessage.onReceiveValue(null);
-                mUploadMessage = filePathCallback;
-                Intent i = new Intent(Intent.ACTION_GET_CONTENT);
-                i.addCategory(Intent.CATEGORY_OPENABLE);
-                i.setType("image/*");
-                startActivityForResult(Intent.createChooser(i, "Select Image"), FILECHOOSER_RESULTCODE);
-                return true;
-            }
-        });
-
-        // கிராஷ் ஆகாத மிக எளிய டவுன்லோட் முறை
-        webview.setDownloadListener((url, userAgent, contentDisposition, mimeType, contentLength) -> {
-            try {
-                DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
-                String cookies = CookieManager.getInstance().getCookie(url);
-                request.addRequestHeader("cookie", cookies);
-                request.addRequestHeader("User-Agent", userAgent);
-                
-                request.setTitle(URLUtil.guessFileName(url, contentDisposition, mimeType));
-                request.allowScanningByMediaScanner();
-                request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
-                
-                // மிக முக்கியம்: Public Downloads போல்டரை மட்டும் பயன்படுத்துகிறோம்
-                request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, URLUtil.guessFileName(url, contentDisposition, mimeType));
-
-                DownloadManager dm = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
-                dm.enqueue(request);
-                Toast.makeText(MainActivity.this, "Downloading...", Toast.LENGTH_SHORT).show();
-            } catch (Exception e) {
-                // எரர் வந்தால் பிரவுசரில் திறக்கும், ஆப் க்ளோஸ் ஆகாது
-                Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
-                startActivity(i);
-            }
-        });
-
         webview.loadUrl(websiteURL);
+        webview.setWebViewClient(new WebViewClient());
+
+        // Download Listener with Auto-Gallery & Share
+        webview.setDownloadListener((url, userAgent, contentDisposition, mimeType, contentLength) -> {
+            DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
+            request.setMimeType(mimeType);
+            String cookies = CookieManager.getInstance().getCookie(url);
+            request.addRequestHeader("cookie", cookies);
+            request.addRequestHeader("User-Agent", userAgent);
+            request.setDescription("Downloading file...");
+            
+            String fileName = URLUtil.guessFileName(url, contentDisposition, mimeType);
+            request.setTitle(fileName);
+            request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+            request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName);
+
+            DownloadManager dm = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+            downloadID = dm.enqueue(request);
+            Toast.makeText(MainActivity.this, "Download Started...", Toast.LENGTH_SHORT).show();
+        });
+
+        // Register Receiver for Share and Gallery Update
+        registerReceiver(onDownloadComplete, new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE));
     }
 
-    private void checkPermissions() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 1);
+    private BroadcastReceiver onDownloadComplete = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            long id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1);
+            if (downloadID == id) {
+                DownloadManager downloadManager = (DownloadManager) context.getSystemService(Context.DOWNLOAD_SERVICE);
+                Uri downloadFileUri = downloadManager.getUriForDownloadedFile(downloadID);
+                
+                if (downloadFileUri != null) {
+                    // Gallery-kku update panna
+                    Intent mediaScanIntent = new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE);
+                    mediaScanIntent.setData(downloadFileUri);
+                    context.sendBroadcast(mediaScanIntent);
+
+                    // Share option kaatta
+                    Intent shareIntent = new Intent(Intent.ACTION_SEND);
+                    shareIntent.setType("image/*");
+                    shareIntent.putExtra(Intent.EXTRA_STREAM, downloadFileUri);
+                    startActivity(Intent.createChooser(shareIntent, "Share Image"));
+                }
             }
         }
-    }
+    };
 
     @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent intent) {
-        super.onActivityResult(requestCode, resultCode, intent);
-        if (requestCode == FILECHOOSER_RESULTCODE && mUploadMessage != null) {
-            Uri[] results = (resultCode == RESULT_OK && intent != null) ? new Uri[]{intent.getData()} : null;
-            mUploadMessage.onReceiveValue(results);
-            mUploadMessage = null;
-        }
-    }
-
-    private class WebViewClientDemo extends WebViewClient {
-        @Override
-        public boolean shouldOverrideUrlLoading(WebView view, String url) {
-            view.loadUrl(url);
-            return true;
-        }
-        @Override
-        public void onPageFinished(WebView view, String url) {
-            super.onPageFinished(view, url);
-            mySwipeRefreshLayout.setRefreshing(false);
-        }
-    }
-
-    @Override
-    public void onBackPressed() {
-        if (webview.canGoBack()) webview.goBack();
-        else finish();
-    }
-}
-
-class CheckNetwork {
-    public static boolean isInternetAvailable(Context context) {
-        NetworkInfo info = ((ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE)).getActiveNetworkInfo();
-        return info != null && info.isConnected();
+    protected void onDestroy() {
+        super.onDestroy();
+        unregisterReceiver(onDownloadComplete);
     }
 }
