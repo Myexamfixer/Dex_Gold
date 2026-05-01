@@ -2,7 +2,6 @@ package com.dg.dexgold;
 
 import android.Manifest;
 import android.app.AlertDialog;
-import android.app.ProgressDialog; // Loading க்காக
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -14,12 +13,15 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
-import android.os.Handler; // தாமதப்படுத்த (Delay)
+import android.os.Handler;
 import android.util.Base64;
+import android.webkit.JsResult;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
+import android.webkit.WebSettings; // இது அவசியம்
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.ProgressBar;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
@@ -51,7 +53,7 @@ public class MainActivity extends AppCompatActivity {
         if (!CheckNetwork.isInternetAvailable(this)) {
             new AlertDialog.Builder(this)
                     .setTitle("No Internet")
-                    .setMessage("Please check your connection.")
+                    .setMessage("Check your connection.")
                     .setPositiveButton("Ok", (dialog, which) -> finish()).show();
         } else {
             initWebView();
@@ -75,20 +77,40 @@ public class MainActivity extends AppCompatActivity {
 
     private void initWebView() {
         webview = findViewById(R.id.webView);
-        webview.getSettings().setJavaScriptEnabled(true);
-        webview.getSettings().setDomStorageEnabled(true);
-        webview.getSettings().setAllowFileAccess(true);
-        webview.getSettings().setDatabaseEnabled(true);
+        WebSettings settings = webview.getSettings(); // மாடர்ன் லுக் செட்டிங்ஸ்
+        
+        settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(true);
+        settings.setDatabaseEnabled(true);
+        settings.setAllowFileAccess(true);
+        
+        // --- நவீன மொபைல் போன்களுக்கான டிஸ்ப்ளே செட்டிங்ஸ் ---
+        settings.setUseWideViewPort(true);
+        settings.setLoadWithOverviewMode(true);
+        settings.setSupportZoom(false); // ஜூம் தேவையில்லை, ஆப் லுக் வரும்
+        settings.setBuiltInZoomControls(false);
+        settings.setDisplayZoomControls(false);
+        
         webview.setWebViewClient(new WebViewClientDemo());
 
         webview.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onJsAlert(WebView view, String url, String message, final JsResult result) {
+                new AlertDialog.Builder(MainActivity.this)
+                        .setTitle("") 
+                        .setMessage(message)
+                        .setPositiveButton(android.R.string.ok, (dialog, which) -> result.confirm())
+                        .setCancelable(false)
+                        .create()
+                        .show();
+                return true;
+            }
+
             public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
                 if (mUploadMessage != null) mUploadMessage.onReceiveValue(null);
                 mUploadMessage = filePathCallback;
-                Intent i = new Intent(Intent.ACTION_GET_CONTENT);
-                i.addCategory(Intent.CATEGORY_OPENABLE);
-                i.setType("image/*");
-                startActivityForResult(Intent.createChooser(i, "Select Image"), FILECHOOSER_RESULTCODE);
+                Intent i = new Intent(Intent.createChooser(new Intent(Intent.ACTION_GET_CONTENT).setType("image/*"), "Select Image"), "");
+                startActivityForResult(i, FILECHOOSER_RESULTCODE);
                 return true;
             }
         });
@@ -103,64 +125,55 @@ public class MainActivity extends AppCompatActivity {
 
     private void processDownload() {
         if (tempUrl.startsWith("data:")) {
-            // Loading திரையைக் காட்டி இமேஜைச் சேமிக்கும்
-            downloadBase64Image(tempUrl);
+            showTrendingLoading(tempUrl);
         } else {
             try {
-                Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(tempUrl));
-                startActivity(i);
+                startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(tempUrl)));
             } catch (Exception e) {
                 Toast.makeText(this, "Error!", Toast.LENGTH_SHORT).show();
             }
         }
     }
 
-    private void downloadBase64Image(String base64String) {
-        // 2. Loading டயலாக் உருவாக்குதல்
-        final ProgressDialog pd = new ProgressDialog(MainActivity.this);
-        pd.setMessage("Optimizing & Saving Image...");
-        pd.setCancelable(false);
-        pd.show();
+    private void showTrendingLoading(final String base64Url) {
+        final AlertDialog loadingAlert = new AlertDialog.Builder(MainActivity.this)
+                .setView(new ProgressBar(MainActivity.this))
+                .setMessage("Optimizing for your Exam...\nPlease wait a moment ⏳")
+                .setCancelable(false)
+                .create();
 
-        // ஒரு சிறிய Delay (3 வினாடிகள்) - விளம்பரம் காட்ட அல்லது லோடிங் தெரிய
-        new Handler().postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    String imageData = base64String.substring(base64String.indexOf(",") + 1);
-                    byte[] decodedBytes = Base64.decode(imageData, Base64.DEFAULT);
-                    Bitmap bitmap = BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.length);
+        loadingAlert.show();
 
-                    String fileName = "MyExam_" + System.currentTimeMillis() + ".jpg";
-                    File path = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
-                    File file = new File(path, fileName);
+        new Handler().postDelayed(() -> {
+            try {
+                String imageData = base64Url.substring(base64Url.indexOf(",") + 1);
+                byte[] decodedBytes = Base64.decode(imageData, Base64.DEFAULT);
+                Bitmap bitmap = BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.length);
 
-                    OutputStream out = new FileOutputStream(file);
-                    bitmap.compress(Bitmap.CompressFormat.JPEG, 100, out);
-                    out.flush();
-                    out.close();
+                String fileName = "ME_Pro_" + System.currentTimeMillis() + ".jpg";
+                File file = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), fileName);
 
-                    Intent mediaScanIntent = new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE);
-                    mediaScanIntent.setData(Uri.fromFile(file));
-                    sendBroadcast(mediaScanIntent);
+                OutputStream out = new FileOutputStream(file);
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 100, out);
+                out.flush();
+                out.close();
 
-                    pd.dismiss(); // லோடிங் முடிந்தது
-                    Toast.makeText(MainActivity.this, "Image Saved to Gallery!", Toast.LENGTH_LONG).show();
-                } catch (Exception e) {
-                    pd.dismiss();
-                    Toast.makeText(MainActivity.this, "Download Failed!", Toast.LENGTH_SHORT).show();
-                }
+                sendBroadcast(new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, Uri.fromFile(file)));
+
+                loadingAlert.dismiss();
+                Toast.makeText(MainActivity.this, "Saved Successfully! ✅", Toast.LENGTH_LONG).show();
+            } catch (Exception e) {
+                loadingAlert.dismiss();
+                Toast.makeText(MainActivity.this, "Optimization Failed!", Toast.LENGTH_SHORT).show();
             }
-        }, 3000); // 3000ms = 3 வினாடிகள் லோடிங் ஆகும்
+        }, 4000);
     }
 
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == 101) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                Toast.makeText(this, "Permission Granted!", Toast.LENGTH_SHORT).show();
-            }
+        if (requestCode == 101 && grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            Toast.makeText(this, "Permission Ready!", Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -168,18 +181,12 @@ public class MainActivity extends AppCompatActivity {
     protected void onActivityResult(int requestCode, int resultCode, Intent intent) {
         super.onActivityResult(requestCode, resultCode, intent);
         if (requestCode == FILECHOOSER_RESULTCODE && mUploadMessage != null) {
-            Uri[] results = (resultCode == RESULT_OK && intent != null) ? new Uri[]{intent.getData()} : null;
-            mUploadMessage.onReceiveValue(results);
+            mUploadMessage.onReceiveValue((resultCode == RESULT_OK && intent != null) ? new Uri[]{intent.getData()} : null);
             mUploadMessage = null;
         }
     }
 
     private class WebViewClientDemo extends WebViewClient {
-        @Override
-        public boolean shouldOverrideUrlLoading(WebView view, String url) {
-            view.loadUrl(url);
-            return true;
-        }
         @Override
         public void onPageFinished(WebView view, String url) {
             super.onPageFinished(view, url);
