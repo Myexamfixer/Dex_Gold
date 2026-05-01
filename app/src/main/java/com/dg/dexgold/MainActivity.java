@@ -15,8 +15,8 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
 import android.util.Base64;
-import android.view.Menu; // Menu க்காக
-import android.view.MenuItem; // Menu க்காக
+import android.view.Menu;
+import android.view.MenuItem;
 import android.webkit.JsResult;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
@@ -65,24 +65,20 @@ public class MainActivity extends AppCompatActivity {
         mySwipeRefreshLayout.setOnRefreshListener(() -> webview.reload());
     }
 
-    // --- 3 DOT MENU உருவாக்குதல் ---
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         getMenuInflater().inflate(R.menu.menu_main, menu);
         return true;
     }
 
-    // --- MENU கிளிக் செய்தல் ---
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         int id = item.getItemId();
-
         if (id == R.id.action_share) {
-            Intent sendIntent = new Intent();
-            sendIntent.setAction(Intent.ACTION_SEND);
-            sendIntent.putExtra(Intent.EXTRA_TEXT, "Check out MyExamFixer Pro for Exam Image Optimization: " + websiteURL);
+            Intent sendIntent = new Intent(Intent.ACTION_SEND);
+            sendIntent.putExtra(Intent.EXTRA_TEXT, "Check out MyExamFixer Pro: " + websiteURL);
             sendIntent.setType("text/plain");
-            startActivity(Intent.createChooser(sendIntent, "Share via"));
+            startActivity(Intent.createChooser(sendIntent, "Share App"));
             return true;
         } else if (id == R.id.action_contact) {
             webview.loadUrl("https://myexamfixer.blogspot.com/p/contact-us.html");
@@ -91,7 +87,6 @@ public class MainActivity extends AppCompatActivity {
             webview.loadUrl("https://myexamfixer.blogspot.com/p/privacy-policy.html");
             return true;
         }
-
         return super.onOptionsItemSelected(item);
     }
 
@@ -143,15 +138,17 @@ public class MainActivity extends AppCompatActivity {
 
             public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
                 if (!isStoragePermissionGranted()) {
-                    Toast.makeText(MainActivity.this, "Storage permission is denied. Please allow in settings.", Toast.LENGTH_LONG).show();
+                    Toast.makeText(MainActivity.this, "Permission Denied!", Toast.LENGTH_SHORT).show();
                     if (mUploadMessage != null) mUploadMessage.onReceiveValue(null);
                     checkStartupPermission();
                     return false;
                 }
                 if (mUploadMessage != null) mUploadMessage.onReceiveValue(null);
                 mUploadMessage = filePathCallback;
-                Intent i = new Intent(Intent.createChooser(new Intent(Intent.ACTION_GET_CONTENT).setType("image/*"), "Select Image"), "");
-                startActivityForResult(i, FILECHOOSER_RESULTCODE);
+                Intent i = new Intent(Intent.ACTION_GET_CONTENT);
+                i.addCategory(Intent.CATEGORY_OPENABLE);
+                i.setType("image/*");
+                startActivityForResult(Intent.createChooser(i, "Select Image"), FILECHOOSER_RESULTCODE);
                 return true;
             }
         });
