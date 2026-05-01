@@ -4,7 +4,6 @@ import android.Manifest;
 import android.app.AlertDialog;
 import android.app.DownloadManager;
 import android.content.Context;
-import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.ConnectivityManager;
@@ -13,9 +12,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
-import android.util.Log;
 import android.webkit.CookieManager;
-import android.webkit.DownloadListener;
 import android.webkit.URLUtil;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
@@ -23,110 +20,125 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
 
     String websiteURL = "https://myexamfixer.blogspot.com/";
     private WebView webview;
     SwipeRefreshLayout mySwipeRefreshLayout;
-    
     private ValueCallback<Uri[]> mUploadMessage;
     private final static int FILECHOOSER_RESULTCODE = 1;
+    private final static int PERMISSION_REQUEST_CODE = 100;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        if(!CheckNetwork.isInternetAvailable(this)) {
-            new AlertDialog.Builder(this)
-                    .setTitle("No internet connection available")
-                    .setMessage("Please Check you're Mobile data or Wifi network.")
-                    .setPositiveButton("Ok", (dialog, which) -> finish())
-                    .show();
-        } else {
-            webview = findViewById(R.id.webView);
-            webview.getSettings().setJavaScriptEnabled(true);
-            webview.getSettings().setDomStorageEnabled(true);
-            webview.getSettings().setAllowFileAccess(true);
-            webview.getSettings().setAllowContentAccess(true);
-            webview.setOverScrollMode(WebView.OVER_SCROLL_NEVER);
-            webview.loadUrl(websiteURL);
-            webview.setWebViewClient(new WebViewClientDemo());
+        // ஆப் தொடங்கிய உடனே எல்லா போன்களுக்கும் தேவையான பெர்மிஷன்களைக் கேட்கும்
+        checkAndRequestPermissions();
 
-            webview.setWebChromeClient(new WebChromeClient() {
-                public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, WebChromeClient.FileChooserParams fileChooserParams) {
-                    if (mUploadMessage != null) {
-                        mUploadMessage.onReceiveValue(null);
-                    }
-                    mUploadMessage = filePathCallback;
-                    Intent i = new Intent(Intent.ACTION_GET_CONTENT);
-                    i.addCategory(Intent.CATEGORY_OPENABLE);
-                    i.setType("image/*");
-                    startActivityForResult(Intent.createChooser(i, "File Chooser"), FILECHOOSER_RESULTCODE);
-                    return true;
-                }
-            });
+        if (!CheckNetwork.isInternetAvailable(this)) {
+            showNoInternetDialog();
+        } else {
+            initWebView();
         }
 
         mySwipeRefreshLayout = findViewById(R.id.swipeContainer);
         mySwipeRefreshLayout.setOnRefreshListener(() -> webview.reload());
+    }
 
-        // Permissions
-        if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.M){
-            if(checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_DENIED){
-                String[] permissions = {Manifest.permission.WRITE_EXTERNAL_STORAGE, Manifest.permission.READ_EXTERNAL_STORAGE};
-                requestPermissions(permissions, 1);
-            }
-        }
+    private void initWebView() {
+        webview = findViewById(R.id.webView);
+        webview.getSettings().setJavaScriptEnabled(true);
+        webview.getSettings().setDomStorageEnabled(true);
+        webview.getSettings().setAllowFileAccess(true);
+        webview.getSettings().setAllowContentAccess(true);
+        webview.getSettings().setDatabaseEnabled(true);
+        webview.setWebViewClient(new WebViewClientDemo());
 
-        // Updated Download Logic to prevent Crash
-        webview.setDownloadListener(new DownloadListener() {
+        webview.setWebChromeClient(new WebChromeClient() {
             @Override
-            public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimeType, long contentLength) {
-                try {
-                    DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
-                    request.setMimeType(mimeType);
-                    String cookies = CookieManager.getInstance().getCookie(url);
-                    request.addRequestHeader("cookie", cookies);
-                    request.addRequestHeader("User-Agent", userAgent);
-                    request.setDescription("Downloading file....");
-                    request.setTitle(URLUtil.guessFileName(url, contentDisposition, mimeType));
-                    request.allowScanningByMediaScanner();
-                    request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
-                    request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, URLUtil.guessFileName(url, contentDisposition, mimeType));
-                    
-                    DownloadManager dm = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
-                    if (dm != null) {
-                        dm.enqueue(request);
-                        Toast.makeText(getApplicationContext(), "Downloading File...", Toast.LENGTH_SHORT).show();
-                    }
-                } catch (Exception e) {
-                    // If App fails, open browser for safety
-                    Intent intent = new Intent(Intent.ACTION_VIEW);
-                    intent.setData(Uri.parse(url));
-                    startActivity(intent);
-                    Toast.makeText(getApplicationContext(), "Opening in browser to download", Toast.LENGTH_SHORT).show();
-                }
+            public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
+                if (mUploadMessage != null) mUploadMessage.onReceiveValue(null);
+                mUploadMessage = filePathCallback;
+                Intent i = new Intent(Intent.ACTION_GET_CONTENT);
+                i.addCategory(Intent.CATEGORY_OPENABLE);
+                i.setType("image/*");
+                startActivityForResult(Intent.createChooser(i, "Select Image"), FILECHOOSER_RESULTCODE);
+                return true;
             }
         });
+
+        webview.setDownloadListener((url, userAgent, contentDisposition, mimeType, contentLength) -> {
+            try {
+                DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
+                request.setMimeType(mimeType);
+                String cookies = CookieManager.getInstance().getCookie(url);
+                request.addRequestHeader("cookie", cookies);
+                request.addRequestHeader("User-Agent", userAgent);
+                request.setDescription("Downloading file...");
+                request.setTitle(URLUtil.guessFileName(url, contentDisposition, mimeType));
+                request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, URLUtil.guessFileName(url, contentDisposition, mimeType));
+
+                DownloadManager dm = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+                if (dm != null) {
+                    dm.enqueue(request);
+                    Toast.makeText(getApplicationContext(), "Download Started...", Toast.LENGTH_SHORT).show();
+                }
+            } catch (Exception e) {
+                // ஆப் கிராஷ் ஆகாமல் இருக்க பிரவுசரில் திறக்கும் (Safety Fallback)
+                Intent intent = new Intent(Intent.ACTION_VIEW);
+                intent.setData(Uri.parse(url));
+                startActivity(intent);
+            }
+        });
+
+        webview.loadUrl(websiteURL);
+    }
+
+    private void checkAndRequestPermissions() {
+        List<String> listPermissionsNeeded = new ArrayList<>();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            listPermissionsNeeded.add(Manifest.permission.READ_MEDIA_IMAGES);
+            listPermissionsNeeded.add(Manifest.permission.POST_NOTIFICATIONS);
+        } else {
+            listPermissionsNeeded.add(Manifest.permission.WRITE_EXTERNAL_STORAGE);
+            listPermissionsNeeded.add(Manifest.permission.READ_EXTERNAL_STORAGE);
+        }
+
+        if (!listPermissionsNeeded.isEmpty()) {
+            ActivityCompat.requestPermissions(this, listPermissionsNeeded.toArray(new String[0]), PERMISSION_REQUEST_CODE);
+        }
+    }
+
+    private void showNoInternetDialog() {
+        new AlertDialog.Builder(this)
+                .setTitle("No Connection")
+                .setMessage("Check your internet and try again.")
+                .setPositiveButton("Exit", (dialog, which) -> finish())
+                .setCancelable(false)
+                .show();
     }
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent intent) {
         super.onActivityResult(requestCode, resultCode, intent);
         if (requestCode == FILECHOOSER_RESULTCODE) {
-            if (null == mUploadMessage) return;
+            if (mUploadMessage == null) return;
             Uri[] results = null;
-            if (resultCode == RESULT_OK) {
-                if (intent != null) {
-                    String dataString = intent.getDataString();
-                    if (dataString != null) {
-                        results = new Uri[]{Uri.parse(dataString)};
-                    }
-                }
+            if (resultCode == RESULT_OK && intent != null) {
+                String dataString = intent.getDataString();
+                if (dataString != null) results = new Uri[]{Uri.parse(dataString)};
             }
             mUploadMessage.onReceiveValue(results);
             mUploadMessage = null;
@@ -139,6 +151,7 @@ public class MainActivity extends AppCompatActivity {
             view.loadUrl(url);
             return true;
         }
+
         @Override
         public void onPageFinished(WebView view, String url) {
             super.onPageFinished(view, url);
@@ -148,12 +161,12 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     public void onBackPressed() {
-        if (webview.canGoBack()) {
+        if (webview != null && webview.canGoBack()) {
             webview.goBack();
         } else {
             new AlertDialog.Builder(this)
-                    .setTitle("EXIT")
-                    .setMessage("Are you sure. You want to close this app?")
+                    .setTitle("Exit")
+                    .setMessage("Do you want to close the app?")
                     .setPositiveButton("Yes", (dialog, which) -> finish())
                     .setNegativeButton("No", null)
                     .show();
@@ -163,7 +176,8 @@ public class MainActivity extends AppCompatActivity {
 
 class CheckNetwork {
     public static boolean isInternetAvailable(Context context) {
-        NetworkInfo info = ((ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE)).getActiveNetworkInfo();
+        ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+        NetworkInfo info = cm.getActiveNetworkInfo();
         return info != null && info.isConnected();
     }
 }
