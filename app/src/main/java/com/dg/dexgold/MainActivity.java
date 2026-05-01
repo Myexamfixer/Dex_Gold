@@ -40,10 +40,9 @@ public class MainActivity extends AppCompatActivity {
 
         if (!CheckNetwork.isInternetAvailable(this)) {
             new AlertDialog.Builder(this)
-                    .setTitle("No Internet Connection")
-                    .setMessage("Please check your network.")
-                    .setPositiveButton("Ok", (dialog, which) -> finish())
-                    .show();
+                    .setTitle("No Internet")
+                    .setMessage("Please check your connection.")
+                    .setPositiveButton("Ok", (dialog, which) -> finish()).show();
         } else {
             initWebView();
         }
@@ -51,7 +50,7 @@ public class MainActivity extends AppCompatActivity {
         mySwipeRefreshLayout = findViewById(R.id.swipeContainer);
         mySwipeRefreshLayout.setOnRefreshListener(() -> webview.reload());
         
-        checkAppPermissions();
+        checkPermissions();
     }
 
     private void initWebView() {
@@ -60,13 +59,6 @@ public class MainActivity extends AppCompatActivity {
         webview.getSettings().setDomStorageEnabled(true);
         webview.getSettings().setAllowFileAccess(true);
         webview.getSettings().setDatabaseEnabled(true);
-        webview.getSettings().setAllowContentAccess(true);
-        
-        // பிளாக்கர் இமேஜ் எடிட்டருக்காக கூடுதல் செட்டிங்ஸ்
-        webview.getSettings().setLoadWithOverviewMode(true);
-        webview.getSettings().setUseWideViewPort(true);
-        webview.getSettings().setSupportZoom(true);
-
         webview.setWebViewClient(new WebViewClientDemo());
 
         webview.setWebChromeClient(new WebChromeClient() {
@@ -81,46 +73,38 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // மிகச்சரியான டவுன்லோட் லாஜிக் (App-க்கு உள்ளேயே நடக்கும்)
+        // கிராஷ் ஆகாத மிக எளிய டவுன்லோட் முறை
         webview.setDownloadListener((url, userAgent, contentDisposition, mimeType, contentLength) -> {
             try {
                 DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
                 String cookies = CookieManager.getInstance().getCookie(url);
-                
-                request.setMimeType(mimeType);
                 request.addRequestHeader("cookie", cookies);
                 request.addRequestHeader("User-Agent", userAgent);
-                request.setDescription("Downloading file...");
-                request.setTitle(URLUtil.guessFileName(url, contentDisposition, mimeType));
                 
-                // டவுன்லோட் முடிந்ததும் நோட்டிபிகேஷன் காட்ட
+                request.setTitle(URLUtil.guessFileName(url, contentDisposition, mimeType));
                 request.allowScanningByMediaScanner();
                 request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
                 
-                // போனின் Downloads ஃபோல்டரில் சேமிக்கும்
+                // மிக முக்கியம்: Public Downloads போல்டரை மட்டும் பயன்படுத்துகிறோம்
                 request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, URLUtil.guessFileName(url, contentDisposition, mimeType));
 
                 DownloadManager dm = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
-                if (dm != null) {
-                    dm.enqueue(request);
-                    Toast.makeText(MainActivity.this, "Download Started. Check Notifications!", Toast.LENGTH_LONG).show();
-                }
+                dm.enqueue(request);
+                Toast.makeText(MainActivity.this, "Downloading...", Toast.LENGTH_SHORT).show();
             } catch (Exception e) {
-                // பிழையிருந்தால் பிரவுசரில் திறக்கும்
-                startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+                // எரர் வந்தால் பிரவுசரில் திறக்கும், ஆப் க்ளோஸ் ஆகாது
+                Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                startActivity(i);
             }
         });
 
         webview.loadUrl(websiteURL);
     }
 
-    private void checkAppPermissions() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+    private void checkPermissions() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this, new String[]{
-                        Manifest.permission.WRITE_EXTERNAL_STORAGE, 
-                        Manifest.permission.READ_EXTERNAL_STORAGE
-                }, 1);
+                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 1);
             }
         }
     }
