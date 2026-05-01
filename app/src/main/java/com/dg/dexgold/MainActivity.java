@@ -48,7 +48,6 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        // 1. Startup-லேயே பெர்மிஷன் கேட்கும்
         checkStartupPermission();
 
         if (!CheckNetwork.isInternetAvailable(this)) {
@@ -79,13 +78,10 @@ public class MainActivity extends AppCompatActivity {
     private void initWebView() {
         webview = findViewById(R.id.webView);
         WebSettings settings = webview.getSettings();
-        
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
         settings.setAllowFileAccess(true);
-        
-        // 2. Modern Display Settings
         settings.setUseWideViewPort(true);
         settings.setLoadWithOverviewMode(true);
         settings.setSupportZoom(false);
@@ -93,7 +89,6 @@ public class MainActivity extends AppCompatActivity {
         webview.setWebViewClient(new WebViewClientDemo());
 
         webview.setWebChromeClient(new WebChromeClient() {
-            // 3. Clean Alert (வெப்சைட் பெயர் மறைப்பு)
             @Override
             public boolean onJsAlert(WebView view, String url, String message, final JsResult result) {
                 new AlertDialog.Builder(MainActivity.this)
@@ -109,8 +104,10 @@ public class MainActivity extends AppCompatActivity {
             public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
                 if (mUploadMessage != null) mUploadMessage.onReceiveValue(null);
                 mUploadMessage = filePathCallback;
-                Intent i = new Intent(Intent.createChooser(new Intent(Intent.ACTION_GET_CONTENT).setType("image/*"), "Select Image"), "");
-                startActivityForResult(i, FILECHOOSER_RESULTCODE);
+                Intent i = new Intent(Intent.ACTION_GET_CONTENT);
+                i.addCategory(Intent.CATEGORY_OPENABLE);
+                i.setType("image/*");
+                startActivityForResult(Intent.createChooser(i, "Select Image"), FILECHOOSER_RESULTCODE);
                 return true;
             }
         });
@@ -135,7 +132,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 4. Trending Style Loading (4 வினாடிகள் தாமதம் - விளம்பரத்திற்காக)
     private void showTrendingLoading(final String base64Url) {
         final AlertDialog loadingAlert = new AlertDialog.Builder(MainActivity.this)
                 .setView(new ProgressBar(MainActivity.this))
@@ -161,7 +157,7 @@ public class MainActivity extends AppCompatActivity {
 
                 sendBroadcast(new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, Uri.fromFile(file)));
 
-                loadingAlert.dismiss();
+                if (loadingAlert.isShowing()) loadingAlert.dismiss();
                 Toast.makeText(MainActivity.this, "Saved Successfully! ✅", Toast.LENGTH_LONG).show();
             } catch (Exception e) {
                 if (loadingAlert.isShowing()) loadingAlert.dismiss();
@@ -182,7 +178,8 @@ public class MainActivity extends AppCompatActivity {
     protected void onActivityResult(int requestCode, int resultCode, Intent intent) {
         super.onActivityResult(requestCode, resultCode, intent);
         if (requestCode == FILECHOOSER_RESULTCODE && mUploadMessage != null) {
-            mUploadMessage.onReceiveValue((resultCode == RESULT_OK && intent != null) ? new Uri[]{intent.getData()} : null);
+            Uri[] results = (resultCode == RESULT_OK && intent != null) ? new Uri[]{intent.getData()} : null;
+            mUploadMessage.onReceiveValue(results);
             mUploadMessage = null;
         }
     }
