@@ -2,6 +2,7 @@ package com.dg.dexgold;
 
 import android.Manifest;
 import android.app.AlertDialog;
+import android.app.DownloadManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -10,6 +11,9 @@ import android.net.NetworkInfo;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
+import android.webkit.CookieManager;
+import android.webkit.URLUtil;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebView;
@@ -23,12 +27,9 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
 public class MainActivity extends AppCompatActivity {
 
-    // உங்கள் இணையதள முகவரி
     String websiteURL = "https://myexamfixer.blogspot.com/"; 
     private WebView webview;
     SwipeRefreshLayout mySwipeRefreshLayout;
-    
-    // இமேஜ் அப்லோடுக்காக
     private ValueCallback<Uri[]> mUploadMessage;
     private final static int FILECHOOSER_RESULTCODE = 1;
 
@@ -37,23 +38,19 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        // இணைய இணைப்பு சோதித்தல்
         if (!CheckNetwork.isInternetAvailable(this)) {
             new AlertDialog.Builder(this)
                     .setTitle("No Internet Connection")
-                    .setMessage("Please check your mobile data or Wifi.")
+                    .setMessage("Please check your network.")
                     .setPositiveButton("Ok", (dialog, which) -> finish())
-                    .setCancelable(false)
                     .show();
         } else {
             initWebView();
         }
 
-        // Swipe to Refresh வசதி
         mySwipeRefreshLayout = findViewById(R.id.swipeContainer);
         mySwipeRefreshLayout.setOnRefreshListener(() -> webview.reload());
         
-        // தேவையான அனுமதிகளைக் கேட்டல் (Permissions)
         checkAppPermissions();
     }
 
@@ -64,9 +61,14 @@ public class MainActivity extends AppCompatActivity {
         webview.getSettings().setAllowFileAccess(true);
         webview.getSettings().setDatabaseEnabled(true);
         webview.getSettings().setAllowContentAccess(true);
+        
+        // பிளாக்கர் இமேஜ் எடிட்டருக்காக கூடுதல் செட்டிங்ஸ்
+        webview.getSettings().setLoadWithOverviewMode(true);
+        webview.getSettings().setUseWideViewPort(true);
+        webview.getSettings().setSupportZoom(true);
+
         webview.setWebViewClient(new WebViewClientDemo());
 
-        // இமேஜ் அப்லோட் லாஜிக் (கேலரி திறக்க)
         webview.setWebChromeClient(new WebChromeClient() {
             public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
                 if (mUploadMessage != null) mUploadMessage.onReceiveValue(null);
@@ -79,15 +81,33 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // 100% கிராஷ் ஆகாத டவுன்லோட் வசதி (Browser Fallback)
+        // மிகச்சரியான டவுன்லோட் லாஜிக் (App-க்கு உள்ளேயே நடக்கும்)
         webview.setDownloadListener((url, userAgent, contentDisposition, mimeType, contentLength) -> {
             try {
-                Intent i = new Intent(Intent.ACTION_VIEW);
-                i.setData(Uri.parse(url));
-                startActivity(i);
-                Toast.makeText(MainActivity.this, "Downloading in Browser...", Toast.LENGTH_SHORT).show();
+                DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
+                String cookies = CookieManager.getInstance().getCookie(url);
+                
+                request.setMimeType(mimeType);
+                request.addRequestHeader("cookie", cookies);
+                request.addRequestHeader("User-Agent", userAgent);
+                request.setDescription("Downloading file...");
+                request.setTitle(URLUtil.guessFileName(url, contentDisposition, mimeType));
+                
+                // டவுன்லோட் முடிந்ததும் நோட்டிபிகேஷன் காட்ட
+                request.allowScanningByMediaScanner();
+                request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                
+                // போனின் Downloads ஃபோல்டரில் சேமிக்கும்
+                request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, URLUtil.guessFileName(url, contentDisposition, mimeType));
+
+                DownloadManager dm = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+                if (dm != null) {
+                    dm.enqueue(request);
+                    Toast.makeText(MainActivity.this, "Download Started. Check Notifications!", Toast.LENGTH_LONG).show();
+                }
             } catch (Exception e) {
-                Toast.makeText(MainActivity.this, "Error: Cannot download this file", Toast.LENGTH_SHORT).show();
+                // பிழையிருந்தால் பிரவுசரில் திறக்கும்
+                startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
             }
         });
 
@@ -130,16 +150,8 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     public void onBackPressed() {
-        if (webview.canGoBack()) {
-            webview.goBack();
-        } else {
-            new AlertDialog.Builder(this)
-                    .setTitle("EXIT")
-                    .setMessage("Are you sure you want to close the app?")
-                    .setPositiveButton("Yes", (dialog, which) -> finish())
-                    .setNegativeButton("No", null)
-                    .show();
-        }
+        if (webview.canGoBack()) webview.goBack();
+        else finish();
     }
 }
 
