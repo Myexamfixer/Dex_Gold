@@ -1,5 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
@@ -7,29 +6,28 @@
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:gravity="center"
+    android:background="#FFFFFF"
     tools:context=".SplashActivity">
 
-    <!-- Logo -->
     <ImageView
         android:layout_width="match_parent"
         android:layout_height="300dp"
         android:src="@drawable/logo"
-        android:scaleType="centerCrop"
-        android:padding="90dp"
-        android:layout_marginTop="220dp"/>
+        android:scaleType="centerInside"
+        android:padding="20dp"
+        android:layout_marginTop="100dp"/>
 
-    <!-- DexGold Text (Bold) -->
     <TextView
         android:id="@+id/dexGoldText"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="DexGold"
-        android:textSize="40sp"
+        android:text="MyExamFixer Pro"
+        android:textSize="32sp"
+        android:textColor="#000000"
         android:textStyle="bold"
         android:layout_marginTop="20dp"
         android:layout_gravity="center"/>
 
-    <!-- Progress Bar -->
     <ProgressBar
         android:layout_width="220dp"
         android:layout_height="10dp"
@@ -38,15 +36,15 @@
         android:max="100"
         android:indeterminate="true"
         android:progress="0"
-        android:layout_marginTop="100dp"/>
+        android:layout_marginTop="50dp"/>
 
-    <!-- Bottom Text (By DexGold Ltd) -->
     <TextView
         android:id="@+id/byDexGoldLtdText"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="by DexGold Ltd"
-        android:textSize="16sp"
+        android:text="by MyExamFixer"
+        android:textSize="14sp"
+        android:textColor="#555555"
         android:layout_marginTop="30dp"
         android:layout_gravity="center"/>
 
