@@ -18,7 +18,7 @@ import android.util.Base64;
 import android.webkit.JsResult;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
-import android.webkit.WebSettings; // இது அவசியம்
+import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.ProgressBar;
@@ -48,6 +48,7 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        // 1. Startup-லேயே பெர்மிஷன் கேட்கும்
         checkStartupPermission();
 
         if (!CheckNetwork.isInternetAvailable(this)) {
@@ -77,23 +78,22 @@ public class MainActivity extends AppCompatActivity {
 
     private void initWebView() {
         webview = findViewById(R.id.webView);
-        WebSettings settings = webview.getSettings(); // மாடர்ன் லுக் செட்டிங்ஸ்
+        WebSettings settings = webview.getSettings();
         
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
         settings.setAllowFileAccess(true);
         
-        // --- நவீன மொபைல் போன்களுக்கான டிஸ்ப்ளே செட்டிங்ஸ் ---
+        // 2. Modern Display Settings
         settings.setUseWideViewPort(true);
         settings.setLoadWithOverviewMode(true);
-        settings.setSupportZoom(false); // ஜூம் தேவையில்லை, ஆப் லுக் வரும்
-        settings.setBuiltInZoomControls(false);
-        settings.setDisplayZoomControls(false);
+        settings.setSupportZoom(false);
         
         webview.setWebViewClient(new WebViewClientDemo());
 
         webview.setWebChromeClient(new WebChromeClient() {
+            // 3. Clean Alert (வெப்சைட் பெயர் மறைப்பு)
             @Override
             public boolean onJsAlert(WebView view, String url, String message, final JsResult result) {
                 new AlertDialog.Builder(MainActivity.this)
@@ -135,6 +135,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    // 4. Trending Style Loading (4 வினாடிகள் தாமதம் - விளம்பரத்திற்காக)
     private void showTrendingLoading(final String base64Url) {
         final AlertDialog loadingAlert = new AlertDialog.Builder(MainActivity.this)
                 .setView(new ProgressBar(MainActivity.this))
@@ -163,7 +164,7 @@ public class MainActivity extends AppCompatActivity {
                 loadingAlert.dismiss();
                 Toast.makeText(MainActivity.this, "Saved Successfully! ✅", Toast.LENGTH_LONG).show();
             } catch (Exception e) {
-                loadingAlert.dismiss();
+                if (loadingAlert.isShowing()) loadingAlert.dismiss();
                 Toast.makeText(MainActivity.this, "Optimization Failed!", Toast.LENGTH_SHORT).show();
             }
         }, 4000);
